@@ -1390,6 +1390,7 @@ struct vector_tile_baton_t {
     mapnik::attributes variables;
     unsigned offset_x;
     unsigned offset_y;
+    mapnik::vector_tile_impl::poly_clipper_type poly_clipper;
     std::string image_format;
     mapnik::scaling_method_e scaling_method;
     bool error;
@@ -1403,6 +1404,7 @@ struct vector_tile_baton_t {
         variables(),
         offset_x(0),
         offset_y(0),
+        poly_clipper(mapnik::vector_tile_impl::AGG_CLIPPER),
         image_format("jpeg"),
         scaling_method(mapnik::SCALING_NEAR),
         error(false) {}
@@ -1700,7 +1702,6 @@ NAN_METHOD(Map::render)
                 }
                 closure->tolerance = param_val->IntegerValue();
             }
-
             if (options->Has(NanNew("path_multiplier"))) {
                 Local<Value> param_val = options->Get(NanNew("path_multiplier"));
                 if (!param_val->IsNumber()) {
@@ -1709,6 +1710,23 @@ NAN_METHOD(Map::render)
                     NanReturnUndefined();
                 }
                 closure->path_multiplier = param_val->NumberValue();
+            }
+
+            if (options->Has(NanNew("poly_clipper"))) {
+                Local<Value> param_val = options->Get(NanNew("poly_clipper"));
+                if (!param_val->IsString()) {
+                    delete closure;
+                    NanThrowTypeError("option 'poly_clipper' must be an string");
+                    NanReturnUndefined();
+                }
+                std::string clipper_name = TOSTR(param_val);
+                if (clipper_name == "angus") {
+                    closure->poly_clipper = mapnik::vector_tile_impl::ANGUS_CLIPPER;
+                } else if (clipper_name == "agg") {
+                    closure->poly_clipper = mapnik::vector_tile_impl::AGG_CLIPPER;
+                } else {
+                    std::clog << "unsupported clipper " << clipper_name << "\n";
+                }
             }
 
             if (options->Has(NanNew("variables")))
@@ -1780,6 +1798,7 @@ void Map::EIO_RenderVectorTile(uv_work_t* req)
                           closure->tolerance,
                           closure->image_format,
                           closure->scaling_method);
+        ren.set_poly_clipper(closure->poly_clipper);
         ren.apply(closure->scale_denominator);
         closure->d->painted(ren.painted());
         closure->d->cache_bytesize();
