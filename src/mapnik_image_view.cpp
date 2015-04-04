@@ -142,6 +142,16 @@ struct visitor_get_pixel_view
 {
     visitor_get_pixel_view(int x, int y)
         : x_(x), y_(y) {}
+    
+    Local<Value> operator() (mapnik::image_view_null const& data)
+    {
+        // This should never be reached because the width and height of 0 for a null
+        // image will prevent the visitor from being called.
+        /* LCOV_EXCL_START */
+        NanEscapableScope();
+        return NanEscapeScope(NanUndefined());
+        /* LCOV_EXCL_END */
+    }
 
     Local<Value> operator() (mapnik::image_view_gray8 const& data)
     {
@@ -216,8 +226,8 @@ struct visitor_get_pixel_view
     Local<Value> operator() (mapnik::image_view_rgba8 const& data)
     {
         NanEscapableScope();
-        mapnik::color val = mapnik::get_pixel<mapnik::color>(data, x_, y_);
-        return NanEscapeScope(Color::NewInstance(val));
+        std::uint32_t val = mapnik::get_pixel<std::uint32_t>(data, x_, y_);
+        return NanEscapeScope(NanNew<Number>(val));
     }
 
   private:
@@ -266,7 +276,15 @@ Local<Value> ImageView::_isSolidSync(_NAN_METHOD_ARGS)
 {
     NanEscapableScope();
     ImageView* im = node::ObjectWrap::Unwrap<ImageView>(args.Holder());
-    return NanEscapeScope(NanNew<Boolean>(mapnik::is_solid(*(im->this_))));
+    if (im->this_->width() > 0 && im->this_->height() > 0)
+    {
+        return NanEscapeScope(NanNew<Boolean>(mapnik::is_solid(*(im->this_))));
+    }
+    else
+    {
+        NanThrowTypeError("image does not have valid dimensions");
+        return NanEscapeScope(NanUndefined());
+    }
 }
 
 
@@ -276,6 +294,27 @@ NAN_METHOD(ImageView::getPixel)
 
     int x = 0;
     int y = 0;
+    bool get_color = false;
+
+    if (args.Length() >= 3) {
+
+        if (!args[2]->IsObject()) {
+            NanThrowTypeError("optional third argument must be an options object");
+            NanReturnUndefined();
+        }
+
+        Local<Object> options = args[2]->ToObject();
+
+        if (options->Has(NanNew("get_color"))) {
+            Local<Value> bind_opt = options->Get(NanNew("get_color"));
+            if (!bind_opt->IsBoolean()) {
+                NanThrowTypeError("optional arg 'color' must be a boolean");
+                NanReturnUndefined();
+            }
+            get_color = bind_opt->BooleanValue();
+        }
+
+    }
 
     if (args.Length() >= 2) {
         if (!args[0]->IsNumber()) {
@@ -297,8 +336,14 @@ NAN_METHOD(ImageView::getPixel)
     if (x >= 0 && x < static_cast<int>(im->this_->width())
         && y >=0 && y < static_cast<int>(im->this_->height()))
     {
-        visitor_get_pixel_view visitor(x, y);
-        NanReturnValue(mapnik::util::apply_visitor(visitor, *im->this_));
+        if (get_color)
+        {
+            mapnik::color val = mapnik::get_pixel<mapnik::color>(*im->this_, x, y);
+            NanReturnValue(Color::NewInstance(val));
+        } else {
+            visitor_get_pixel_view visitor(x, y);
+            NanReturnValue(mapnik::util::apply_visitor(visitor, *im->this_));
+        }
     }
     NanReturnUndefined();
 }

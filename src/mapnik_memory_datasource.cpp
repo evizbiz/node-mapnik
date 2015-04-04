@@ -82,11 +82,25 @@ NAN_METHOD(MemoryDatasource::New)
     while (i < a_length) {
         Local<Value> name = names->Get(i)->ToString();
         Local<Value> value = options->Get(name);
-        params[TOSTR(name)] = TOSTR(value);
+        if (value->IsUint32() || value->IsInt32())
+        {
+            params[TOSTR(name)] = value->IntegerValue();
+        }
+        else if (value->IsNumber())
+        {   
+            params[TOSTR(name)] = value->NumberValue();
+        }
+        else if (value->IsBoolean())
+        {
+            params[TOSTR(name)] = value->BooleanValue();
+        }
+        else
+        {
+            params[TOSTR(name)] = TOSTR(value);
+        }
         i++;
     }
     params["type"] = "memory";
-
     //memory_datasource cache;
     MemoryDatasource* d = new MemoryDatasource();
     d->Wrap(args.This());
@@ -113,8 +127,7 @@ NAN_METHOD(MemoryDatasource::parameters)
         mapnik::parameters::const_iterator end = d->datasource_->params().end();
         for (; it != end; ++it)
         {
-            node_mapnik::params_to_object serializer( ds , it->first);
-            mapnik::util::apply_visitor( serializer, it->second );
+            node_mapnik::params_to_object(ds, it->first, it->second);
         }
     }
     NanReturnValue(ds);
@@ -242,6 +255,7 @@ NAN_METHOD(MemoryDatasource::add)
             }
             mapnik::memory_datasource *cache = dynamic_cast<mapnik::memory_datasource *>(d->datasource_.get());
             cache->push(feature);
+            NanReturnValue(NanTrue());
         }
     }
     NanReturnValue(NanFalse());

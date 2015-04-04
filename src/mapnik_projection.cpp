@@ -23,9 +23,9 @@ void Projection::Initialize(Handle<Object> target) {
     NanAssignPersistent(constructor, lcons);
 }
 
-Projection::Projection(std::string const& name) :
+Projection::Projection(std::string const& name, bool defer_init) :
     node::ObjectWrap(),
-    projection_(std::make_shared<mapnik::projection>(name)) {}
+    projection_(std::make_shared<mapnik::projection>(name, defer_init)) {}
 
 Projection::~Projection()
 {
@@ -57,9 +57,30 @@ NAN_METHOD(Projection::New)
         NanThrowTypeError("please provide a proj4 intialization string");
         NanReturnUndefined();
     }
+    bool lazy = false;
+    if (args.Length() >= 2)
+    {
+        if (!args[1]->IsObject())
+        {
+            NanThrowTypeError("The second parameter provided should be an options object");
+            NanReturnUndefined();
+        }
+        Local<Object> options = args[1].As<Object>();
+        if (options->Has(NanNew("lazy")))
+        {
+            Local<Value> lazy_opt = options->Get(NanNew("lazy"));
+            if (!lazy_opt->IsBoolean())
+            {
+                NanThrowTypeError("'lazy' must be a Boolean");
+                NanReturnUndefined();
+            }
+            lazy = lazy_opt->BooleanValue();
+        }
+    }
+            
     try
     {
-        Projection* p = new Projection(TOSTR(args[0]));
+        Projection* p = new Projection(TOSTR(args[0]), lazy);
         p->Wrap(args.This());
         NanReturnValue(args.This());
     }

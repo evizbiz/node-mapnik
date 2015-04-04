@@ -97,8 +97,6 @@ void Map::Initialize(Handle<Object> target) {
     ATTR(lcons, "background", get_prop, set_prop);
     ATTR(lcons, "parameters", get_prop, set_prop);
     ATTR(lcons, "aspect_fix_mode", get_prop, set_prop);
-    // A complete test coverage of get_prop
-    ATTR(lcons, "undefined_property", get_prop, set_prop);
 
     NODE_MAPNIK_DEFINE_CONSTANT(lcons->GetFunction(),
                                 "ASPECT_GROW_BBOX",mapnik::Map::GROW_BBOX)
@@ -125,30 +123,31 @@ void Map::Initialize(Handle<Object> target) {
 Map::Map(int width, int height) :
     node::ObjectWrap(),
     map_(std::make_shared<mapnik::Map>(width,height)),
-    in_use_(0) {}
+    in_use_(false) {}
 
 Map::Map(int width, int height, std::string const& srs) :
     node::ObjectWrap(),
     map_(std::make_shared<mapnik::Map>(width,height,srs)),
-    in_use_(0) {}
+    in_use_(false) {}
 
 Map::Map() :
     node::ObjectWrap(),
     map_(),
-    in_use_(0) {}
+    in_use_(false) {}
 
 Map::~Map() { }
 
-void Map::acquire() {
-    ++in_use_;
+bool Map::acquire() {
+    if (in_use_)
+    {
+        return false;
+    }
+    in_use_ = true;
+    return true;
 }
 
 void Map::release() {
-    --in_use_;
-}
-
-int Map::active() const {
-    return in_use_;
+    in_use_ = false;
 }
 
 NAN_METHOD(Map::New)
@@ -257,19 +256,18 @@ NAN_GETTER(Map::get_prop)
         else
             NanReturnUndefined();
     }
-    else if (a == "parameters") {
+    else //if (a == "parameters") 
+    {
         Local<Object> ds = NanNew<Object>();
         mapnik::parameters const& params = m->map_->get_extra_parameters();
         mapnik::parameters::const_iterator it = params.begin();
         mapnik::parameters::const_iterator end = params.end();
         for (; it != end; ++it)
         {
-            node_mapnik::params_to_object serializer( ds , it->first);
-            mapnik::util::apply_visitor( serializer, it->second );
+            node_mapnik::params_to_object(ds, it->first, it->second);
         }
         NanReturnValue(ds);
     }
-    NanReturnUndefined();
 }
 
 NAN_SETTER(Map::set_prop)
@@ -386,6 +384,8 @@ NAN_SETTER(Map::set_prop)
                     double dub_val = a_value->NumberValue();
                     params[TOSTR(name)] = dub_val;
                 }
+            } else if (a_value->IsBoolean()) {
+                params[TOSTR(name)] = static_cast<mapnik::value_bool>(a_value->BooleanValue());
             }
             i++;
         }
@@ -1306,12 +1306,23 @@ NAN_METHOD(Map::zoomToBox)
     {
         NanThrowError("Must provide 4 arguments: minx,miny,maxx,maxy");
         NanReturnUndefined();
-    } else {
+    } 
+    else if (args[0]->IsNumber() && 
+               args[1]->IsNumber() &&
+               args[2]->IsNumber() &&
+               args[3]->IsNumber())
+    {
         minx = args[0]->NumberValue();
         miny = args[1]->NumberValue();
         maxx = args[2]->NumberValue();
         maxy = args[3]->NumberValue();
     }
+    else
+    {
+        NanThrowError("If you are providing 4 arguments: minx,miny,maxx,maxy - they must be all numbers");
+        NanReturnUndefined();
+    }
+
     mapnik::box2d<double> box(minx,miny,maxx,maxy);
     m->map_->zoom_to_box(box);
     NanReturnUndefined();
@@ -1423,15 +1434,6 @@ NAN_METHOD(Map::render)
 
     try
     {
-        if (m->active() != 0) {
-            std::ostringstream s;
-            s << "render: this map appears to be in use by "
-              << m->active()
-              << " other thread(s) which is not allowed."
-              << " You need to use a map pool to avoid sharing map objects between concurrent rendering";
-            std::clog << s.str() << "\n";
-        }
-
         // parse options
 
         // defaults
@@ -1505,10 +1507,6 @@ NAN_METHOD(Map::render)
         }
 
         Local<Object> obj = args[0]->ToObject();
-        if (obj->IsNull() || obj->IsUndefined()) {
-            NanThrowTypeError("first argument is invalid, must be a renderable mapnik object, not null/undefined");
-            NanReturnUndefined();
-        }
 
         if (NanNew(Image::constructor)->HasInstance(obj)) {
 
@@ -1534,6 +1532,12 @@ NAN_METHOD(Map::render)
                     NanReturnUndefined();
                 }
                 object_to_container(closure->variables,bind_opt->ToObject());
+            }
+            if (!m->acquire())
+            {
+                delete closure;
+                NanThrowTypeError("render: Map currently in use by another thread. Consider using a map pool.");
+                NanReturnUndefined();
             }
             NanAssignPersistent(closure->cb, args[args.Length() - 1].As<Function>());
             uv_queue_work(uv_default_loop(), &closure->request, EIO_RenderImage, (uv_after_work_cb)EIO_AfterRenderImage);
@@ -1579,7 +1583,7 @@ NAN_METHOD(Map::render)
                         NanThrowTypeError(s.str().c_str());
                         NanReturnUndefined();
                     }
-                } else if (layer_id->IsNumber()) {
+                } else { // IS NUMBER
                     layer_idx = layer_id->IntegerValue();
                     std::size_t layer_num = layers.size();
 
@@ -1597,9 +1601,6 @@ NAN_METHOD(Map::render)
                         NanThrowTypeError(s.str().c_str());
                         NanReturnUndefined();
                     }
-                } else {
-                    NanThrowTypeError("layer id must be a string or index number");
-                    NanReturnUndefined();
                 }
             }
 
@@ -1616,7 +1617,7 @@ NAN_METHOD(Map::render)
                 while (i < num_fields) {
                     Local<Value> name = a->Get(i);
                     if (name->IsString()){
-                        g->get()->add_property_name(TOSTR(name));
+                        g->get()->add_field(TOSTR(name));
                     }
                     i++;
                 }
@@ -1647,6 +1648,12 @@ NAN_METHOD(Map::render)
             closure->offset_x = offset_x;
             closure->offset_y = offset_y;
             closure->error = false;
+            if (!m->acquire())
+            {
+                delete closure;
+                NanThrowTypeError("render: Map currently in use by another thread. Consider using a map pool.");
+                NanReturnUndefined();
+            }
             NanAssignPersistent(closure->cb, args[args.Length() - 1].As<Function>());
             uv_queue_work(uv_default_loop(), &closure->request, EIO_RenderGrid, (uv_after_work_cb)EIO_AfterRenderGrid);
         } else if (NanNew(VectorTile::constructor)->HasInstance(obj)) {
@@ -1658,7 +1665,7 @@ NAN_METHOD(Map::render)
                 Local<Value> param_val = options->Get(NanNew("image_scaling"));
                 if (!param_val->IsString()) {
                     delete closure;
-                    NanThrowTypeError("option 'image_scaling' must be an unsigned integer");
+                    NanThrowTypeError("option 'image_scaling' must be a string");
                     NanReturnUndefined();
                 }
                 std::string image_scaling = TOSTR(param_val);
@@ -1723,6 +1730,12 @@ NAN_METHOD(Map::render)
             closure->offset_x = offset_x;
             closure->offset_y = offset_y;
             closure->error = false;
+            if (!m->acquire())
+            {
+                    delete closure;
+                NanThrowTypeError("render: Map currently in use by another thread. Consider using a map pool.");
+                NanReturnUndefined();
+            }
             NanAssignPersistent(closure->cb, args[args.Length() - 1].As<Function>());
             uv_queue_work(uv_default_loop(), &closure->request, EIO_RenderVectorTile, (uv_after_work_cb)EIO_AfterRenderVectorTile);
         } else {
@@ -1730,14 +1743,16 @@ NAN_METHOD(Map::render)
             NanReturnUndefined();
         }
 
-        m->acquire();
         m->Ref();
         NanReturnUndefined();
     }
     catch (std::exception const& ex)
     {
+        // I am not quite sure it is possible to put a test in to cover an exception here
+        /* LCOV_EXCL_START */
         NanThrowTypeError(ex.what());
         NanReturnUndefined();
+        /* LCOV_EXCL_END */
     }
 }
 
@@ -1806,7 +1821,7 @@ void Map::EIO_RenderGrid(uv_work_t* req)
     try
     {
         // copy property names
-        std::set<std::string> attributes = closure->g->get()->property_names();
+        std::set<std::string> attributes = closure->g->get()->get_fields();
 
         // todo - make this a static constant
         std::string known_id_key = "__id__";
@@ -2096,6 +2111,12 @@ NAN_METHOD(Map::renderFile)
         closure->use_cairo = false;
     }
 
+    if (!m->acquire())
+    {
+        delete closure;
+        NanThrowTypeError("render: Map currently in use by another thread. Consider using a map pool.");
+        NanReturnUndefined();
+    }
     closure->request.data = closure;
 
     closure->m = m;
@@ -2184,24 +2205,21 @@ NAN_METHOD(Map::renderSync)
 {
     NanScope();
 
-    if (args.Length() < 1 || !args[0]->IsString()) {
-        NanThrowTypeError("argument must be a format string");
-        NanReturnUndefined();
-    }
-
-    std::string format = TOSTR(args[0]);
+    std::string format = "png";
     palette_ptr palette;
     double scale_factor = 1.0;
     double scale_denominator = 0.0;
     int buffer_size = 0;
 
-    if (args.Length() >= 2){
-        if (!args[1]->IsObject()) {
-            NanThrowTypeError("second argument is optional, but if provided must be an object, eg. {format: 'pdf'}");
+    if (args.Length() >= 1) 
+    {
+        if (!args[0]->IsObject()) 
+        {
+            NanThrowTypeError("first argument is optional, but if provided must be an object, eg. {format: 'pdf'}");
             NanReturnUndefined();
         }
 
-        Local<Object> options = args[1]->ToObject();
+        Local<Object> options = args[0]->ToObject();
         if (options->Has(NanNew("format")))
         {
             Local<Value> format_opt = options->Get(NanNew("format"));
@@ -2258,34 +2276,12 @@ NAN_METHOD(Map::renderSync)
         }
     }
 
-    // options hash
-    if (args.Length() >= 2) {
-        if (!args[1]->IsObject()) {
-            NanThrowTypeError("optional second arg must be an options object");
-            NanReturnUndefined();
-        }
-
-        Local<Object> options = args[1].As<Object>();
-
-        if (options->Has(NanNew("palette")))
-        {
-            Local<Value> bind_opt = options->Get(NanNew("palette"));
-            if (!bind_opt->IsObject()) {
-                NanThrowTypeError("mapnik.Palette expected as second arg");
-                NanReturnUndefined();
-            }
-
-            Local<Object> obj = bind_opt->ToObject();
-            if (obj->IsNull() || obj->IsUndefined() || !NanNew(Palette::constructor)->HasInstance(obj)) {
-                NanThrowTypeError("mapnik.Palette expected as second arg");
-                NanReturnUndefined();
-            }
-
-            palette = node::ObjectWrap::Unwrap<Palette>(obj)->palette();
-        }
-    }
-
     Map* m = node::ObjectWrap::Unwrap<Map>(args.Holder());
+    if (!m->acquire())
+    {
+        NanThrowTypeError("render: Map currently in use by another thread. Consider using a map pool.");
+        NanReturnUndefined();
+    }
     std::string s;
     try
     {
@@ -2310,9 +2306,11 @@ NAN_METHOD(Map::renderSync)
     }
     catch (std::exception const& ex)
     {
+        m->release();
         NanThrowError(ex.what());
         NanReturnUndefined();
     }
+    m->release();
     NanReturnValue(NanNewBufferHandle((char*)s.data(), s.size()));
 }
 
@@ -2411,6 +2409,11 @@ NAN_METHOD(Map::renderFileSync)
             NanReturnUndefined();
         }
     }
+    if (!m->acquire())
+    {
+        NanThrowTypeError("render: Map currently in use by another thread. Consider using a map pool.");
+        NanReturnUndefined();
+    }
 
     try
     {
@@ -2422,6 +2425,7 @@ NAN_METHOD(Map::renderFileSync)
 #else
             std::ostringstream s("");
             s << "Cairo backend is not available, cannot write to " << format << "\n";
+            m->release();
             NanThrowError(s.str().c_str());
             NanReturnUndefined();
 #endif
@@ -2451,8 +2455,10 @@ NAN_METHOD(Map::renderFileSync)
     }
     catch (std::exception const& ex)
     {
+        m->release();
         NanThrowError(ex.what());
         NanReturnUndefined();
     }
+    m->release();
     NanReturnUndefined();
 }

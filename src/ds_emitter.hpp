@@ -12,33 +12,12 @@
 #include <mapnik/datasource.hpp>        // for datasource, etc
 #include <mapnik/feature_layer_desc.hpp>  // for layer_descriptor
 
+// node mapnik
+#include "utils.hpp"
+
 using namespace v8;
 
 namespace node_mapnik {
-
-struct extra_param_visitor
-{
-    Local<Value> operator() (mapnik::value_null const&)
-    {
-        return NanNull();
-    }
-
-    Local<Value> operator() (mapnik::value_integer const& val)
-    {
-        return NanNew<Number>(val);
-    }
-    
-    Local<Value> operator() (mapnik::value_double const& val)
-    {
-        return NanNew<Number>(val);
-    }
-
-    Local<Value> operator() (std::string const& val)
-    {
-        return NanNew<String>(val);
-    }
-
-};
 
 static void describe_datasource(Local<Object> description, mapnik::datasource_ptr ds)
 {
@@ -126,7 +105,7 @@ static void describe_datasource(Local<Object> description, mapnik::datasource_pt
         description->Set(NanNew("geometry_type"), js_type);
         for (auto const& param : ld.get_extra_parameters()) 
         {
-            description->Set(NanNew(param.first), mapnik::util::apply_visitor(extra_param_visitor(), param.second));
+            node_mapnik::params_to_object(description,param.first, param.second);
         }
     }
     catch (std::exception const& ex)

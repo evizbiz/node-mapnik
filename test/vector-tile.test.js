@@ -185,6 +185,9 @@ describe('mapnik.VectorTile ', function() {
         assert.throws(function() { new mapnik.VectorTile(1); });
         assert.throws(function() { new mapnik.VectorTile('foo'); });
         assert.throws(function() { new mapnik.VectorTile('a', 'b', 'c'); });
+        assert.throws(function() { new mapnik.VectorTile(0,0,0,null); });
+        assert.throws(function() { new mapnik.VectorTile(0,0,0,{width:null}); });
+        assert.throws(function() { new mapnik.VectorTile(0,0,0,{height:null}); });
     });
 
     it('should be initialized properly', function(done) {
@@ -233,21 +236,132 @@ describe('mapnik.VectorTile ', function() {
         });
     });
 
-    it('should error out if we pass invalid data to setData/addData', function(done) {
+    it('should error out if we pass invalid data to setData - 1', function(done) {
         var vtile = new mapnik.VectorTile(0,0,0);
         assert.equal(vtile.empty(), true);
         assert.throws(function() { vtile.setData('foo'); }); // first arg must be a buffer object
+        assert.throws(function() { vtile.setDataSync({}); }); // first arg must be a buffer object
         assert.throws(function() { vtile.setData('foo',function(){}); }); // first arg must be a buffer object
+        assert.throws(function() { vtile.setData({},function(){}); }); // first arg must be a buffer object
+        assert.throws(function() { vtile.setData({},function(){}); }); // first arg must be a buffer object
+        assert.throws(function() { vtile.setData(new Buffer('foo'), null); });
         assert.throws(function() { vtile.setData(new Buffer('foo'));vtile.parse(); });
         assert.throws(function() { vtile.setData(new Buffer(0)); }); // empty buffer is not valid
-        assert.throws(function() { vtile.addData(new Buffer(0)); }); // empty buffer is not valid
         vtile.setData(new Buffer('foo'),function(err) {
             if (err) throw err;
+            assert.throws(function() { vtile.empty(); });
             vtile.parse(function(err) {
-                assert.ok(err);
+                assert.throws(function() { if (err) throw err; });
                 done();
             });
         });
+    });
+
+    it('should error out if we pass invalid data to setData - 2', function(done) {
+        var vtile = new mapnik.VectorTile(0,0,0);
+        assert.equal(vtile.empty(), true);
+        vtile.setData(new Buffer('0'),function(err) {
+            if (err) throw err;
+            assert.throws(function() { 
+                vtile.names(); 
+            }); //  unterminated varint, unexpected end of buffer
+            assert.throws(function() { 
+                vtile.empty(); 
+            }); //  unterminated varint, unexpected end of buffer
+            vtile.parse(function(err) {
+                assert.throws(function() { if (err) throw err; });
+                done();
+            });
+        });
+    });
+
+    it('should error out if we pass invalid data to setData - 3', function(done) {
+        var vtile = new mapnik.VectorTile(0,0,0);
+        assert.equal(vtile.empty(), true);
+        vtile.setData(new Buffer('0B1234', 'hex'),function(err) {
+            if (err) throw err;
+            assert.throws(function() { 
+                vtile.names(); 
+            }); // "can not skip unknown type 3"
+            assert.throws(function() { 
+                vtile.empty(); 
+            }); // "can not skip unknown type 3"
+            done();
+        });
+    });
+    
+    it('should error out if we pass invalid data to setData - 4', function() {
+        var vtile = new mapnik.VectorTile(0,0,0);
+        assert.equal(vtile.empty(), true);
+        vtile.setData(new Buffer('120774657374696e67', 'hex')); // should set fine as string 
+        vtile.names(); // should not throw and does nothing.
+        vtile.setData(new Buffer('089601', 'hex')); // variant should work fine.
+        vtile.names(); // should not throw and does nothing.
+        assert.throws(function() { 
+            vtile.setData(new Buffer('0896818181818181818181818181818181818181', 'hex')); 
+            // variant should fail because it is too long.
+            vtile.names(); // should throw
+        });
+        assert.throws(function() { 
+            vtile.setData(new Buffer('0896818181818181818181818181818181818181', 'hex')); 
+            // variant should fail because it is too long.
+            vtile.empty(); // should throw
+        });
+        vtile.setData(new Buffer('090123456789012345', 'hex')); // 64 should work fine.
+        vtile.names(); // should not throw and does nothing.
+        assert.equal(vtile.empty(), true);
+        vtile.setData(new Buffer('0D01234567', 'hex')); // 32 should work fine.
+        vtile.names(); // should not throw and does nothing.
+        assert.equal(vtile.empty(), true);
+        assert.throws(function() { 
+            vtile.setData(new Buffer('0D0123456', 'hex')); // 32 should fail because missing a byte
+            vtile.names(); // should throw
+        });
+        assert.throws(function() { 
+            vtile.setData(new Buffer('0D0123456', 'hex')); // 32 should fail because missing a byte
+            vtile.empty(); // should throw
+        });
+    });
+    
+    it('should error out if we pass invalid data to setData - 5', function(done) {
+        var vtile = new mapnik.VectorTile(0,0,0);
+        assert.equal(vtile.empty(), true);
+        vtile.parse();
+        assert.equal(vtile.empty(), true);
+        vtile.setData(new Buffer(0),function(err) {
+            if (err) throw err;
+            vtile.parse(function(err) {
+                assert.throws(function() { if (err) throw err; });
+                done();
+            });
+        });
+    });
+
+    it('should return empty but have layer name', function() {
+        var vtile = new mapnik.VectorTile(0,0,0);
+        // a layer with only a name "layer-name" and no features
+        vtile.setData(new Buffer('1A0C0A0A6C617965722D6E616D65', 'hex'));
+        assert.equal(vtile.names()[0], 'layer-name');
+        assert.equal(vtile.empty(), true);
+    });
+
+    it('should error out if we pass invalid data to addData', function() {
+        var vtile = new mapnik.VectorTile(0,0,0);
+        assert.equal(vtile.empty(), true);
+        assert.throws(function() { vtile.addData(null); }); // empty buffer is not valid
+        assert.throws(function() { vtile.addData({}); }); // empty buffer is not valid
+        assert.throws(function() { vtile.addData(new Buffer(0)); }); // empty buffer is not valid
+        assert.throws(function() {
+            vtile.addData(new Buffer('foo'));
+            vtile.parse();
+        });
+    });
+    
+    it('should fail to parse', function() {
+        var vtile = new mapnik.VectorTile(0,0,0);
+        vtile.addData(new Buffer('foo'));
+        vtile.clear();
+        assert.throws(function() { vtile.parse(); });
     });
 
     it('should be able to setData/parse (async)', function(done) {
@@ -470,6 +584,17 @@ describe('mapnik.VectorTile ', function() {
             });
         });
     });
+    
+    it('should render an empty vector', function(done) {
+        var vtile = new mapnik.VectorTile(9,112,195);
+        var map = new mapnik.Map(256, 256);
+        map.loadSync('./test/data/vector_tile/layers.xml');
+        map.extent = [-1,1,-1,1];
+        map.render(vtile,{},function(err,vtile) {
+            assert.equal(vtile.empty(), true);
+            done();
+        });
+    });
 
     // next three testcases cover isSolid edge conditions and can be
     // removed if isSolid is deprecated
@@ -516,7 +641,7 @@ describe('mapnik.VectorTile ', function() {
             done();
         });
     });
-
+    
     it('should render expected results', function(done) {
         var data = fs.readFileSync("./test/data/vector_tile/tile3.vector.pbf");
         var vtile = new mapnik.VectorTile(5,28,12);
@@ -547,6 +672,38 @@ describe('mapnik.VectorTile ', function() {
             done();
         });
     });
+    
+    it('should fail to render due to bad parameters', function(done) {
+        var vtile = new mapnik.VectorTile(0, 0, 0);
+        var map = new mapnik.Map(256, 256);
+        map.extent = [-20037508.34, -20037508.34, 20037508.34, 20037508.34];
+        map.loadSync('./test/stylesheet.xml');
+        map.srs = '+init=PIZZA';
+        map.extent = [-20037508.34, -20037508.34, 20037508.34, 20037508.34];
+        assert.throws(function() { map.render(vtile, {image_scaling:null}, function(err, vtile) {}); });
+        assert.throws(function() { map.render(vtile, {image_scaling:'foo'}, function(err, vtile) {}); });
+        assert.throws(function() { map.render(vtile, {image_format:null}, function(err, vtile) {}); });
+        assert.throws(function() { map.render(vtile, {tolerance:null}, function(err, vtile) {}); });
+        assert.throws(function() { map.render(vtile, {path_multiplier:null}, function(err, vtile) {}); });
+        assert.throws(function() { map.render(vtile, {variables:null}, function(err, vtile) {}); });
+        map.render(vtile, {}, function(err, vtile) {
+            assert.throws(function() { if (err) throw err; });
+            done();
+        });
+    });
+    
+    it('should fail to render two vector tiles at once', function() {
+        var vtile = new mapnik.VectorTile(0, 0, 0);
+        var map = new mapnik.Map(256, 256);
+        map.loadSync('./test/stylesheet.xml');
+        map.extent = [-20037508.34, -20037508.34, 20037508.34, 20037508.34];
+        assert.throws(function() {
+            map.render(vtile, {}, function(err, vtile) {});
+            map.render(vtile, {}, function(err, vtile) {});
+        });
+
+    });
+
 
     it('should render a vector_tile of the whole world', function(done) {
         var vtile = new mapnik.VectorTile(0, 0, 0);
@@ -554,10 +711,7 @@ describe('mapnik.VectorTile ', function() {
         map.loadSync('./test/stylesheet.xml');
         map.extent = [-20037508.34, -20037508.34, 20037508.34, 20037508.34];
 
-        //var png = map.renderSync('png', new mapnik.Image(256, 256), {});
-        //fs.writeFileSync('./test/data/vector_tile/tile0.expected.png', png);
-
-        map.render(vtile, {}, function(err, vtile) {
+        map.render(vtile, {variables:{pizza:'pie'}}, function(err, vtile) {
             if (err) throw err;
             assert.equal(vtile.isSolid(), false);
             fs.writeFileSync('./test/data/vector_tile/tile0.vector.pbf', vtile.getData());
@@ -675,7 +829,7 @@ describe('mapnik.VectorTile ', function() {
 
         vtile.render(map, new mapnik.Grid(256, 256), {layer:0}, function(err, vtile_image) {
             if (err) throw err;
-            var utf = vtile_image.encodeSync('utf');
+            var utf = vtile_image.encodeSync();
             var expected_file = './test/data/vector_tile/tile0.expected.grid.json';
             var actual_file = './test/data/vector_tile/tile0.actual.grid.json';
             if (!existsSync(expected_file) || process.env.UPDATE) {

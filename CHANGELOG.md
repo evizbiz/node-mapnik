@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.2.1
+ - Added an additional parameter to Projection intialization. This prevents the intialization of a proj4 object internally. This will only be useful when reprojecting from epsg:4326 to epsg:3857 and vise versa. 
+
 ## 3.2.0
  - Added support for a variety of different grayscale images and `mapnik.imageType` list
    - `mapnik.imageType.null`
@@ -22,7 +25,30 @@
  - Added `imageCopy` to copy an image into a new image type
  - `Image` `rgba8` objects are not automatically premultiplied prior to using `composite` operation
  - Added image view support for all new grayscale image types
- - Added new tolerance optional parameter to `query` on vector tiles.
+ - Modified tolerance option on `query` and `queryMany` to only include features within that tolerance into the vector tile.
+ - Modified the `renderSync` method on the `Map` object to only take an optional parameters object. Format can still be set by passing format as a optional argument. This was done so that it mirrors `renderFileSync`. The default format if none is provide is 'png'
+ - Changed name of method `hsl2rgb2` to `hsl2rgb`
+ - Changed name of method `rgb2hsl2` to `rgb2hsl`
+ - Removed format parameter from `Grid` and `GridView` objects `encode` and `encodeSync` methods as it had no affect.
+ - Added `active`, `queryable`, `clear_label_cache`, `minzoom`, and `maxzoom` property to `Layer` objects
+ - Added `compositeSync` to `VectorTile` object.
+ - Changed `composite` in `VectorTile` to accept a callback
+ - Upgraded to nan@1.7.0 and mapnik-vector-tile@0.7.1
+ - Changed boolean on `Parameters` for `Map` object such that 1 and 0 are no longer boolean but integers.
+ - Binaries updated to use Mapnik v3.x (master branch) at 3270d42b74821ac733db169487b5cd5d5748c1e6 and mapnik-packaging@6638de9b5b
+
+Notable changes in the Mapnik SDK include:
+ - Changes: https://github.com/mapnik/mapnik/compare/30c6cf636c...5a49842952
+ - Mapnik TopoJSON plugin now supports optional `bbox` property on layer
+ - Various improvements to Mapnik pgraster plugin
+ - Mapnik GDAL plugin now keeps datasets open for the lifetime of the datasource (rather than per featureset)
+ - Mapnik GDAL plugin now has optimized nodata handling for RGB images.
+ - Mapnik no longer calls `dlclose` on gdal.input (mapnik/mapnik#2716)
+ - Upgraded Clipper to v6.2.8 / svn r492.
+ - Upgraded libtiff to 4.0.4beta
+ - Upgraded libjpeg-turbo to 1.4.0
+ - Upgraded GDAL to 1.11.2
+ - Upgraded harfbuzz to 0.9.38
 
 ## 3.1.6
 

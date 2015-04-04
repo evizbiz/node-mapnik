@@ -144,6 +144,8 @@ describe('mapnik.Map', function() {
         // Assert bad ways to loadSync
         assert.throws(function() { map.load(); });
         assert.throws(function() { map.load(1); });
+        assert.throws(function() { map.load('string',{},3); });
+        assert.throws(function() { map.load(1, function(err, result_map) {}); });
         assert.throws(function() { map.load('./test/stylesheet.xml', null, function(err, result_map) {}); });
         assert.throws(function() { map.load('./test/stylesheet.xml', {strict: 12 }, function(err, result_map) {}); });
         assert.throws(function() { map.load('./test/stylesheet.xml', {base: 12 }, function(err, result_map) {}); });
@@ -216,6 +218,39 @@ describe('mapnik.Map', function() {
         assert.equal(layers2.length, 0);
     });
     
+    it('should load fromString sync', function() {
+        var map = new mapnik.Map(4, 4);
+        var s = '<Map>';
+        s += '<Style name="points">';
+        s += ' <Rule>';
+        s += '  <PointSymbolizer />';
+        s += ' </Rule>';
+        s += '</Style>';
+        s += '</Map>';
+
+        assert.equal(map.fromStringSync(s, {strict:false, base:''}),undefined);
+    });
+    
+    it('should not load fromString Sync', function() {
+        var map = new mapnik.Map(4, 4);
+        var s = '<xMap>';
+        s += '<Style name="points">';
+        s += ' <Rule>';
+        s += '  <PointSymbolizer />';
+        s += ' </Rule>';
+        s += '</Style>';
+        s += '</aMap>';
+
+        // Test some bad parameter passings
+        assert.throws(function() { map.fromStringSync(); });
+        assert.throws(function() { map.fromStringSync(1); });
+        assert.throws(function() { map.fromStringSync(s, null); });
+        assert.throws(function() { map.fromStringSync(s, {strict:null}); });
+        assert.throws(function() { map.fromStringSync(s, {base:null}); });
+        // Test good parameters, bad string
+        assert.throws(function() { map.fromStringSync(s, {strict:false, base:''}); });
+    });
+    
     it('should not load fromString Async - bad string', function(done) {
         var map = new mapnik.Map(4, 4);
         var s = '<xMap>';
@@ -245,7 +280,8 @@ describe('mapnik.Map', function() {
 
         // Test passing bad parameters
         assert.throws(function() { map.fromString(); });
-        assert.throws(function() { map.fromString(12); });
+        assert.throws(function() { map.fromString(s, 1); });
+        assert.throws(function() { map.fromString(12, function(err, result_map) {}); });
         assert.throws(function() { map.fromString(s, null, function(err, result_map) {});  });
         assert.throws(function() { map.fromString(s, {strict:12}, function(err, result_map) {}); });
         assert.throws(function() { map.fromString(s, {base:12}, function(err, result_map) {}); });

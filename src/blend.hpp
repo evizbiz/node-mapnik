@@ -55,8 +55,8 @@ enum EncoderType {
     BLEND_ENCODER_MINIZ
 };
 
-NAN_METHOD(rgb2hsl2);
-NAN_METHOD(hsl2rgb2);
+NAN_METHOD(rgb2hsl);
+NAN_METHOD(hsl2rgb);
 NAN_METHOD(Blend);
 
 struct BlendBaton {
@@ -65,7 +65,6 @@ struct BlendBaton {
     Images images;
 
     std::string message;
-    std::vector<std::string> warnings;
 
     int quality;
     BlendFormat format;

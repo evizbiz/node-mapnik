@@ -12,16 +12,19 @@ function xmlWithFont(font) {
 }
 
 describe('map local fonts ', function() {
+
     it('fonts can be registered locally using font-directory in XML', function(done) {
         var map = new mapnik.Map(4, 4);
         map.fromStringSync('<Map font-directory="./data/map-a" />',{strict:true,base:path.resolve(__dirname)});
         assert.equal(map.fonts().indexOf('DejaVu Serif Condensed Bold Italic'),0);
         done();
     });
+
     it('fonts can be registered locally registerFonts', function(done) {
         var map = new mapnik.Map(4, 4);
         assert.throws(function() { map.registerFonts(); });
         assert.throws(function() { map.registerFonts(12); });
+        assert.throws(function() { map.registerFonts('./test/data/map-a/', null); });
         assert.throws(function() { map.registerFonts('./test/data/map-a/', {recurse:1}); });
         assert.equal(map.registerFonts('./test/data/DOESNOTEXIST/', {recurse:false}), false);
         assert.equal(map.registerFonts('./test/data/map-a/', {recurse:false}), true);
@@ -33,11 +36,13 @@ describe('map local fonts ', function() {
 describe('font scope', function() {
     var a = 'DejaVu Serif Condensed Bold Italic';
     var b = 'DejaVu Serif Condensed Bold';
+    
     it('fonts are not globally registered', function(done) {
         assert.equal(mapnik.fonts().indexOf(a), -1);
         assert.equal(mapnik.fonts().indexOf(b), -1);
         done();
     });
+
     it('map a has ' + a, function(done) {
         var map = new mapnik.Map(4, 4);
         assert.equal(map.fontDirectory(), undefined);
@@ -67,6 +72,7 @@ describe('font scope', function() {
         assert.equal(mapnik.memoryFonts().length,0);
         done();
     });
+    
     it('map b has ' + b, function(done) {
         var map = new mapnik.Map(4, 4);
         assert.doesNotThrow(function() {
@@ -82,6 +88,7 @@ describe('font scope', function() {
         assert.ok(map.fontFiles()[b].indexOf('map-b') > -1);
         done();
     });
+    
     it('map a should not have ' + b, function(done) {
         var map = new mapnik.Map(4, 4);
         assert.throws(function() {
@@ -94,6 +101,7 @@ describe('font scope', function() {
         assert.equal(map.fonts().indexOf(b), -1);
         done();
     });
+    
     it('map b should not have ' + a, function(done) {
         var map = new mapnik.Map(4, 4);
         assert.throws(function() {
